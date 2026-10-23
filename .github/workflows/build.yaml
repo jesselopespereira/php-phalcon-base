@@ -1,0 +1,60 @@
+name: Build & Push base image
+
+on:
+  push:
+    branches: [main]
+    paths: ['Dockerfile', '.github/workflows/build.yaml']
+  workflow_dispatch:
+  # Rebuild mensal para pegar patches de segurança do Debian/PHP na mesma tag.
+  schedule:
+    - cron: '0 9 1 * *'
+
+env:
+  # Configure em Settings > Secrets and variables > Actions:
+  #   Variable DOCKERHUB_USERNAME  e  Secret DOCKERHUB_TOKEN (Access Token do Docker Hub, Read & Write)
+  IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/php-phalcon
+  PHP_VERSION: '8.4'
+  PHALCON_VERSION: '5.23.0'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Tags
+        id: tags
+        run: |
+          PHALCON_MINOR="${PHALCON_VERSION%.*}"
+          {
+            echo "list<<EOF"
+            echo "${IMAGE}:${PHP_VERSION}-${PHALCON_VERSION}"
+            echo "${IMAGE}:${PHP_VERSION}-${PHALCON_MINOR}"
+            echo "${IMAGE}:latest"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # amd64 = GitHub Actions/EC2; arm64 = Macs Apple Silicon (dev local).
+      # O arm64 roda via QEMU e é lento (compila o Phalcon), mas só acontece aqui, uma vez.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          pull: true
+          build-args: |
+            PHP_VERSION=${{ env.PHP_VERSION }}
+            PHALCON_VERSION=${{ env.PHALCON_VERSION }}
+          tags: ${{ steps.tags.outputs.list }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
