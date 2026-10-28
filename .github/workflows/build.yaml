@@ -52,6 +52,8 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           pull: true
+          # Rebuild mensal/manual sem cache: senão a camada do apt-get vem do cache e não pega patches do Debian.
+          no-cache: ${{ github.event_name != 'push' }}
           build-args: |
             PHP_VERSION=${{ env.PHP_VERSION }}
             PHALCON_VERSION=${{ env.PHALCON_VERSION }}
